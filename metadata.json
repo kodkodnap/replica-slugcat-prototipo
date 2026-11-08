@@ -1,0 +1,6 @@
+{
+  "name": "Rain World Slugcat Procedural Animation",
+  "description": "Procedural 2D inverse kinematics chain physics and animation of a Rain World Slugcat in Three.js.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

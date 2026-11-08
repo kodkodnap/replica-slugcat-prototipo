@@ -1,0 +1,1667 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>Rain World 2D Ecosystem - Autonomous Multi-Agent Simulation</title>
+  <meta name="description" content="Simulación de ecosistema 2D autónomo inspirado en Rain World con Slugcat autónomo, Lagarto depredador, moscas, tuberías, agua y cinemática inversa procedimental." />
+  <meta property="og:title" content="Rain World 2D Ecosystem Simulation" />
+  <meta property="og:description" content="Autonomous 2D ecosystem simulation in Three.js with procedural IK, Tilemap, water buoyancy, shortcut pipes, and utility AI." />
+  <meta property="og:type" content="website" />
+  <meta name="twitter:card" content="summary_large_image" />
+  <!-- Three.js CDN -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      user-select: none;
+      -webkit-user-select: none;
+    }
+    html, body {
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background-color: #08090d;
+      color: #e2e8f0;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+    }
+    #canvas-container {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      z-index: 1;
+    }
+    .hud-layer {
+      position: absolute;
+      z-index: 10;
+      pointer-events: none;
+    }
+    .hud-header {
+      top: 18px;
+      left: 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 5px;
+    }
+    .hud-title {
+      font-size: 14px;
+      font-weight: 700;
+      letter-spacing: 2.5px;
+      text-transform: uppercase;
+      color: #ffffff;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .hud-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: #38bdf8;
+      box-shadow: 0 0 10px #38bdf8;
+      display: inline-block;
+    }
+    .hud-subtitle {
+      font-size: 10px;
+      letter-spacing: 1px;
+      color: #717d91;
+      text-transform: uppercase;
+    }
+
+    /* Panel Flotante de Espectador */
+    .spectator-panel {
+      top: 18px;
+      right: 20px;
+      background: rgba(13, 16, 23, 0.88);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      backdrop-filter: blur(12px);
+      padding: 14px 18px;
+      border-radius: 10px;
+      width: 290px;
+      pointer-events: auto;
+      box-shadow: 0 10px 25px rgba(0, 0, 0, 0.5);
+    }
+    .panel-section-title {
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 1.5px;
+      color: #94a3b8;
+      text-transform: uppercase;
+      margin-bottom: 8px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+      padding-bottom: 4px;
+      display: flex;
+      justify-content: space-between;
+    }
+    .stat-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 11px;
+      margin-bottom: 6px;
+    }
+    .stat-label {
+      color: #64748b;
+    }
+    .stat-value {
+      font-weight: 600;
+      color: #f1f5f9;
+    }
+    .badge {
+      display: inline-block;
+      padding: 2px 7px;
+      border-radius: 4px;
+      font-size: 9px;
+      font-weight: 700;
+      letter-spacing: 0.5px;
+      text-transform: uppercase;
+    }
+    .badge-slugcat { background: rgba(248, 250, 252, 0.15); color: #ffffff; border: 1px solid rgba(255, 255, 255, 0.3); }
+    .badge-lizard { background: rgba(34, 197, 94, 0.2); color: #4ade80; border: 1px solid rgba(74, 222, 128, 0.4); }
+    .badge-water { background: rgba(56, 189, 248, 0.2); color: #38bdf8; border: 1px solid rgba(56, 189, 248, 0.4); }
+    .badge-pipe { background: rgba(245, 158, 11, 0.2); color: #fbbf24; border: 1px solid rgba(251, 191, 36, 0.4); }
+    .badge-danger { background: rgba(239, 68, 68, 0.25); color: #f87171; border: 1px solid rgba(248, 113, 113, 0.5); }
+
+    /* Pips de Hambre / Alimento */
+    .pips-container {
+      display: flex;
+      gap: 5px;
+      align-items: center;
+    }
+    .pip {
+      width: 9px;
+      height: 9px;
+      border-radius: 50%;
+      border: 1.5px solid #ffffff;
+      transition: all 0.2s ease;
+    }
+    .pip.filled {
+      background: #ffffff;
+      box-shadow: 0 0 6px rgba(255, 255, 255, 0.8);
+    }
+
+    /* Barra de Controles */
+    .hud-bottom-bar {
+      bottom: 20px;
+      left: 20px;
+      right: 20px;
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-end;
+      pointer-events: none;
+    }
+    .controls-group {
+      display: flex;
+      gap: 8px;
+      background: rgba(13, 16, 23, 0.88);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      backdrop-filter: blur(12px);
+      padding: 8px 12px;
+      border-radius: 8px;
+      pointer-events: auto;
+    }
+    .btn {
+      background: rgba(255, 255, 255, 0.08);
+      border: 1px solid rgba(255, 255, 255, 0.16);
+      color: #e2e8f0;
+      padding: 5px 11px;
+      border-radius: 5px;
+      cursor: pointer;
+      font-family: inherit;
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      transition: all 0.15s ease;
+    }
+    .btn:hover {
+      background: rgba(255, 255, 255, 0.22);
+      color: #ffffff;
+      border-color: rgba(255, 255, 255, 0.4);
+    }
+    .btn.active {
+      background: rgba(56, 189, 248, 0.25);
+      border-color: #38bdf8;
+      color: #38bdf8;
+    }
+    .legend-box {
+      background: rgba(13, 16, 23, 0.88);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      backdrop-filter: blur(12px);
+      padding: 8px 14px;
+      border-radius: 8px;
+      font-size: 10px;
+      color: #94a3b8;
+      display: flex;
+      gap: 14px;
+      pointer-events: auto;
+    }
+    .legend-item {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+    }
+    .legend-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+    }
+  </style>
+</head>
+<body>
+  <div id="canvas-container"></div>
+
+  <!-- Header HUD -->
+  <div class="hud-layer hud-header">
+    <div class="hud-title">
+      <span class="hud-dot"></span>
+      Rain World // Extended Ecosystem Sim
+    </div>
+    <div class="hud-subtitle">Tilemap 40x22 • Organic Non-Linear AI • Water Clambering • Kinematic Paws</div>
+  </div>
+
+  <!-- Spectator Stats Panel -->
+  <div class="hud-layer spectator-panel">
+    <div class="panel-section-title">
+      <span>Estado Slugcat</span>
+      <span id="sc-pip-count">4 / 7</span>
+    </div>
+    <div class="stat-row">
+      <span class="stat-label">Comportamiento:</span>
+      <span id="sc-state" class="badge badge-slugcat">EXPLORANDO</span>
+    </div>
+    <div class="stat-row">
+      <span class="stat-label">Locomoción:</span>
+      <span id="sc-locomotion" class="stat-value">Tierra (IK 2P)</span>
+    </div>
+    <div class="stat-row">
+      <span class="stat-label">Hambre / Pipas:</span>
+      <div id="sc-pips" class="pips-container"></div>
+    </div>
+    <div class="stat-row">
+      <span class="stat-label">Enfriamiento Tubo:</span>
+      <span id="sc-pipe-cd" class="stat-value">Listo</span>
+    </div>
+
+    <div class="panel-section-title" style="margin-top: 12px;">
+      <span>Depredador: Lagarto Verde</span>
+    </div>
+    <div class="stat-row">
+      <span class="stat-label">Objetivo:</span>
+      <span id="lz-state" class="badge badge-lizard">PATRULLANDO</span>
+    </div>
+    <div class="stat-row">
+      <span class="stat-label">Distancia al Slugcat:</span>
+      <span id="lz-dist" class="stat-value">--- px</span>
+    </div>
+
+    <div class="panel-section-title" style="margin-top: 12px;">
+      <span>Censo de Fauna y Objetos</span>
+    </div>
+    <div class="stat-row">
+      <span class="stat-label">Moscas (Batflies):</span>
+      <span id="count-flies" class="stat-value">6</span>
+    </div>
+    <div class="stat-row">
+      <span class="stat-label">Frutas Azules:</span>
+      <span id="count-fruits" class="stat-value">7</span>
+    </div>
+    <div class="stat-row">
+      <span class="stat-label">Tuberías Activas:</span>
+      <span class="stat-value" style="color:#fbbf24;">2 Pares (A & B)</span>
+    </div>
+  </div>
+
+  <!-- Barra de Controles -->
+  <div class="hud-layer hud-bottom-bar">
+    <div class="controls-group">
+      <button id="btn-pause" class="btn" title="Pausar o reanudar el ecosistema">⏸ Pausar</button>
+      <button id="btn-spawn-food" class="btn" title="Soltar fruta en el mapa">+ Fruta</button>
+      <button id="btn-spawn-fly" class="btn" title="Engendrar una mosca">+ Mosca</button>
+      <button id="btn-reset" class="btn" title="Reiniciar posiciones de criaturas">↺ Reiniciar</button>
+      <button id="btn-cam" class="btn" title="Alternar entre vista panorámica y seguimiento">Cam: Panorama</button>
+    </div>
+
+    <div class="legend-box">
+      <div class="legend-item"><span class="legend-dot" style="background:#ffffff;"></span> Slugcat</div>
+      <div class="legend-item"><span class="legend-dot" style="background:#22c55e;"></span> Lagarto</div>
+      <div class="legend-item"><span class="legend-dot" style="background:#38bdf8;"></span> Agua</div>
+      <div class="legend-item"><span class="legend-dot" style="background:#fbbf24;"></span> Tubería</div>
+      <div class="legend-item"><span class="legend-dot" style="background:#a855f7;"></span> Mosca</div>
+    </div>
+  </div>
+
+  <script>
+    // =========================================================================
+    // RAIN WORLD 2D EXTENDED ECOSYSTEM SIMULATION
+    // =========================================================================
+
+    // Mapa expandido: 40 columnas x 22 filas (1200 x 660 px)
+    const ARENA = {
+      width: 1200,
+      height: 660,
+      cols: 40,
+      rows: 22,
+      tileSize: 30,
+      waterLevelY: -195, // Centrado: -330 a +330
+      waterBottomY: -315
+    };
+
+    let isPaused = false;
+    let followCam = false;
+
+    // --- 1. Inicialización de Three.js con OrthographicCamera centrada ---
+    const container = document.getElementById('canvas-container');
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x07090d);
+
+    const camera = new THREE.OrthographicCamera(
+      -ARENA.width / 2, ARENA.width / 2,
+      ARENA.height / 2, -ARENA.height / 2,
+      -200, 200
+    );
+    camera.position.z = 100;
+
+    const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    container.appendChild(renderer.domElement);
+
+    function handleResize() {
+      const windowW = window.innerWidth;
+      const windowH = window.innerHeight;
+      const targetAspect = ARENA.width / ARENA.height;
+      const currentAspect = windowW / windowH;
+
+      let viewW = ARENA.width;
+      let viewH = ARENA.height;
+
+      if (currentAspect > targetAspect) {
+        viewW = ARENA.height * currentAspect;
+      } else {
+        viewH = ARENA.width / currentAspect;
+      }
+
+      camera.left = -viewW / 2;
+      camera.right = viewW / 2;
+      camera.top = viewH / 2;
+      camera.bottom = -viewH / 2;
+      camera.updateProjectionMatrix();
+      renderer.setSize(windowW, windowH);
+    }
+    window.addEventListener('resize', handleResize);
+    handleResize();
+
+    const tilemapGroup = new THREE.Group();
+    const waterGroup = new THREE.Group();
+    const pipesGroup = new THREE.Group();
+    const itemsGroup = new THREE.Group();
+    const creaturesGroup = new THREE.Group();
+    const fxGroup = new THREE.Group();
+
+    scene.add(tilemapGroup);
+    scene.add(waterGroup);
+    scene.add(pipesGroup);
+    scene.add(itemsGroup);
+    scene.add(creaturesGroup);
+    scene.add(fxGroup);
+
+    // --- 2. TILEMAP EXTENDIDO (40 Cols x 22 Rows) ---
+    const TILE_MAP = Array.from({ length: ARENA.rows }, () => new Array(ARENA.cols).fill(0));
+
+    function rInRange(r) { return r >= 0 && r < ARENA.rows; }
+    function cInRange(c) { return c >= 0 && c < ARENA.cols; }
+
+    function addHPlatform(row, startCol, endCol) {
+      for (let c = startCol; c <= endCol; c++) {
+        if (rInRange(row) && cInRange(c)) TILE_MAP[row][c] = 1;
+      }
+    }
+
+    // Perímetro sólido (paredes, techo y lecho submarino)
+    for (let c = 0; c < ARENA.cols; c++) {
+      TILE_MAP[0][c] = 1;
+      TILE_MAP[ARENA.rows - 1][c] = 1;
+    }
+    for (let r = 0; r < ARENA.rows; r++) {
+      TILE_MAP[r][0] = 1;
+      TILE_MAP[r][ARENA.cols - 1] = 1;
+    }
+
+    // Nivel orgánico con rampas escalonadas para salida del agua y múltiples alturas:
+    // 1. Orilla Izquierda y Rampa hacia el agua
+    addHPlatform(5, 1, 10);   // Orilla izq sobre agua
+    addHPlatform(4, 11, 11);  // Escalón superficie agua
+    addHPlatform(3, 12, 12);  // Escalón sumergido izq
+
+    // 2. Orilla Derecha y Rampa hacia el agua
+    addHPlatform(3, 27, 27);  // Escalón sumergido der
+    addHPlatform(4, 28, 28);  // Escalón superficie der
+    addHPlatform(5, 29, 38);  // Orilla der sobre agua
+
+    // 3. Isla central con acceso doble desde el agua
+    addHPlatform(2, 18, 21);  // Cimientos submarinos
+    addHPlatform(4, 15, 15);  // Rampa agua izq isla
+    addHPlatform(4, 24, 24);  // Rampa agua der isla
+    addHPlatform(6, 16, 23);  // Plataforma isla central baja
+
+    // 4. Repisas intermedias y puentes
+    addHPlatform(9, 3, 11);   // Repisa media izquierda
+    addHPlatform(10, 15, 24); // Puente colgante intermedio
+    addHPlatform(9, 28, 36);  // Repisa media derecha
+
+    // 5. Miradores y niveles superiores
+    addHPlatform(13, 2, 8);   // Saliente alto izquierdo
+    addHPlatform(13, 31, 37); // Saliente alto derecho
+    addHPlatform(16, 16, 23); // Pasarela alta central
+    addHPlatform(17, 4, 12);  // Refugio alto izquierdo
+    addHPlatform(17, 27, 35); // Refugio alto derecho
+    addHPlatform(19, 14, 25); // Cimera industrial más alta
+
+    function tileToWorld(col, row) {
+      return {
+        x: col * ARENA.tileSize + ARENA.tileSize / 2 - ARENA.width / 2,
+        y: row * ARENA.tileSize + ARENA.tileSize / 2 - ARENA.height / 2
+      };
+    }
+    function worldToTile(x, y) {
+      const col = Math.floor((x + ARENA.width / 2) / ARENA.tileSize);
+      const row = Math.floor((y + ARENA.height / 2) / ARENA.tileSize);
+      return { col, row };
+    }
+    function isTileSolid(col, row) {
+      if (!rInRange(row) || !cInRange(col)) return true;
+      return TILE_MAP[row][col] === 1;
+    }
+    function isPointSolid(x, y) {
+      const { col, row } = worldToTile(x, y);
+      return isTileSolid(col, row);
+    }
+
+    const tileGeometry = new THREE.PlaneGeometry(ARENA.tileSize - 0.5, ARENA.tileSize - 0.5);
+    const tileMaterial = new THREE.MeshBasicMaterial({ color: 0x141821 });
+    const tileEdgeMaterial = new THREE.MeshBasicMaterial({ color: 0x222a38 });
+    const tileMeshGroup = new THREE.Group();
+
+    for (let r = 0; r < ARENA.rows; r++) {
+      for (let c = 0; c < ARENA.cols; c++) {
+        if (TILE_MAP[r][c] === 1) {
+          const pos = tileToWorld(c, r);
+          const isEdge = (!isTileSolid(c, r + 1) || !isTileSolid(c, r - 1) || !isTileSolid(c - 1, r) || !isTileSolid(c + 1, r));
+          const mesh = new THREE.Mesh(tileGeometry, isEdge ? tileEdgeMaterial : tileMaterial);
+          mesh.position.set(pos.x, pos.y, -10);
+          tileMeshGroup.add(mesh);
+        }
+      }
+    }
+    tilemapGroup.add(tileMeshGroup);
+
+    // --- 3. SISTEMA DE AGUA (Water Reservoir) ---
+    const waterWidth = ARENA.width - 2 * ARENA.tileSize;
+    const waterHeight = Math.abs(ARENA.waterLevelY - (-ARENA.height / 2 + ARENA.tileSize));
+    const waterCenterY = (ARENA.waterLevelY + (-ARENA.height / 2 + ARENA.tileSize)) / 2;
+
+    const waterGeo = new THREE.PlaneGeometry(waterWidth, waterHeight);
+    const waterMat = new THREE.MeshBasicMaterial({ color: 0x0f2a42, transparent: true, opacity: 0.68 });
+    const waterMesh = new THREE.Mesh(waterGeo, waterMat);
+    waterMesh.position.set(0, waterCenterY, -2);
+    waterGroup.add(waterMesh);
+
+    const surfaceSegments = 48;
+    const waterSurfaceGeo = new THREE.BufferGeometry();
+    const surfacePositions = new Float32Array(surfaceSegments * 3);
+    waterSurfaceGeo.setAttribute('position', new THREE.BufferAttribute(surfacePositions, 3));
+    const waterSurfaceMat = new THREE.LineBasicMaterial({ color: 0x38bdf8, linewidth: 2, transparent: true, opacity: 0.85 });
+    const waterSurfaceLine = new THREE.Line(waterSurfaceGeo, waterSurfaceMat);
+    waterGroup.add(waterSurfaceLine);
+
+    const splashPool = [];
+    for (let i = 0; i < 40; i++) {
+      const sp = new THREE.Mesh(
+        new THREE.CircleGeometry(2.2, 8),
+        new THREE.MeshBasicMaterial({ color: 0x7dd3fc, transparent: true, opacity: 0 })
+      );
+      sp.visible = false;
+      fxGroup.add(sp);
+      splashPool.push({ mesh: sp, vx: 0, vy: 0, life: 0 });
+    }
+    function spawnSplash(x, y, count = 6) {
+      let spawned = 0;
+      for (const sp of splashPool) {
+        if (sp.life <= 0) {
+          sp.mesh.position.set(x, y, 5);
+          sp.mesh.visible = true;
+          sp.mesh.material.opacity = 0.85;
+          sp.vx = (Math.random() - 0.5) * 3.5;
+          sp.vy = Math.random() * 4 + 1.8;
+          sp.life = 1.0;
+          spawned++;
+          if (spawned >= count) break;
+        }
+      }
+    }
+
+    // --- 4. SISTEMA DE TUBERÍAS (Shortcuts Interconectados) ---
+    // Ubicaciones orgánicas en el mapa expandido
+    const PIPES = [
+      { id: 'A1', partnerId: 'A2', x: -465, y: -135, outDir: { x: 1, y: 0.5 }, color: 0x38bdf8 },  // Orilla izq (col 4, row 6)
+      { id: 'A2', partnerId: 'A1', x: -15, y: 195, outDir: { x: 0, y: 1 }, color: 0x38bdf8 },       // Pasarela cimera (col 19, row 17)
+      { id: 'B1', partnerId: 'B2', x: 465, y: -135, outDir: { x: -1, y: 0.5 }, color: 0xfbbf24 },  // Orilla der (col 35, row 6)
+      { id: 'B2', partnerId: 'B1', x: -375, y: 225, outDir: { x: 1, y: 0.2 }, color: 0xfbbf24 }    // Refugio alto izq (col 7, row 18)
+    ];
+
+    PIPES.forEach(pipe => {
+      const pipeGroup = new THREE.Group();
+      pipeGroup.position.set(pipe.x, pipe.y, -1);
+
+      const ring = new THREE.Mesh(new THREE.RingGeometry(8, 14, 20), new THREE.MeshBasicMaterial({ color: 0x1e2638 }));
+      pipeGroup.add(ring);
+
+      const core = new THREE.Mesh(new THREE.CircleGeometry(8, 20), new THREE.MeshBasicMaterial({ color: 0x050608 }));
+      pipeGroup.add(core);
+
+      const glowRing = new THREE.Mesh(
+        new THREE.RingGeometry(12, 14, 20),
+        new THREE.MeshBasicMaterial({ color: pipe.color, transparent: true, opacity: 0.85 })
+      );
+      pipeGroup.add(glowRing);
+      pipe.glowMesh = glowRing;
+
+      pipesGroup.add(pipeGroup);
+    });
+
+    function drawPipeConnection(p1, p2, color) {
+      const curve = new THREE.QuadraticBezierCurve3(
+        new THREE.Vector3(p1.x, p1.y, -15),
+        new THREE.Vector3((p1.x + p2.x) / 2, (p1.y + p2.y) / 2 + 60, -15),
+        new THREE.Vector3(p2.x, p2.y, -15)
+      );
+      const points = curve.getPoints(24);
+      const geom = new THREE.BufferGeometry().setFromPoints(points);
+      const mat = new THREE.LineDashedMaterial({ color: color, dashSize: 8, gapSize: 6, transparent: true, opacity: 0.25 });
+      const line = new THREE.Line(geom, mat);
+      line.computeLineDistances();
+      pipesGroup.add(line);
+    }
+    drawPipeConnection(PIPES[0], PIPES[1], 0x38bdf8);
+    drawPipeConnection(PIPES[2], PIPES[3], 0xfbbf24);
+
+    // --- 5. OBJETOS DEL ECOSISTEMA: FRUTAS AZULES Y BATFLIES ---
+    const FRUITS = [];
+    const BATFLIES = [];
+
+    const fruitMat = new THREE.MeshBasicMaterial({ color: 0x38bdf8 });
+    const fruitStemMat = new THREE.MeshBasicMaterial({ color: 0x1e3a5f });
+
+    function spawnFruit(x, y) {
+      const g = new THREE.Group();
+      g.position.set(x, y, 1);
+
+      const berry = new THREE.Mesh(new THREE.CircleGeometry(6, 16), fruitMat);
+      g.add(berry);
+
+      const stem = new THREE.Mesh(new THREE.PlaneGeometry(2, 6), fruitStemMat);
+      stem.position.set(0, 5, -0.1);
+      g.add(stem);
+
+      itemsGroup.add(g);
+      FRUITS.push({ group: g, x, y, active: true });
+    }
+
+    // Frutas dispersas a diferentes alturas
+    spawnFruit(-380, -130); // Orilla izq
+    spawnFruit(-420, 0);    // Repisa media izq
+    spawnFruit(0, -90);     // Isla central baja
+    spawnFruit(30, 30);     // Puente colgante
+    spawnFruit(380, -130);  // Orilla der
+    spawnFruit(420, 0);     // Repisa media der
+    spawnFruit(-240, 240);  // Refugio alto izq
+
+    const flyBodyMat = new THREE.MeshBasicMaterial({ color: 0x1a1a24 });
+    const flyWingMat = new THREE.MeshBasicMaterial({ color: 0xc084fc, transparent: true, opacity: 0.75 });
+
+    function spawnBatfly(x, y) {
+      const g = new THREE.Group();
+      g.position.set(x, y, 2);
+
+      const body = new THREE.Mesh(new THREE.CircleGeometry(4, 12), flyBodyMat);
+      g.add(body);
+
+      const wingL = new THREE.Mesh(new THREE.PlaneGeometry(7, 3), flyWingMat);
+      wingL.position.set(-4, 2, 0.1);
+      g.add(wingL);
+
+      const wingR = new THREE.Mesh(new THREE.PlaneGeometry(7, 3), flyWingMat);
+      wingR.position.set(4, 2, 0.1);
+      g.add(wingR);
+
+      itemsGroup.add(g);
+      BATFLIES.push({
+        group: g,
+        wingL,
+        wingR,
+        x,
+        y,
+        vx: (Math.random() - 0.5) * 1.5,
+        vy: (Math.random() - 0.5) * 1.5,
+        wingPhase: Math.random() * Math.PI,
+        active: true
+      });
+    }
+
+    spawnBatfly(-250, 40);
+    spawnBatfly(250, 40);
+    spawnBatfly(0, 140);
+    spawnBatfly(-120, 200);
+    spawnBatfly(120, 200);
+    spawnBatfly(-380, 100);
+
+    // --- 6. CRIATURA 1: SLUGCAT AUTÓNOMO (Procedural + IK + IA) ---
+    const SC_CONFIG = {
+      numNodes: 11,
+      radii: [18, 17, 20, 21, 19, 16, 13, 10.5, 7.5, 4.8, 2.5],
+      lengths: [0, 13, 14, 15, 14, 13, 12, 11, 10, 9, 8],
+      colors: { body: 0xf8fafc, eye: 0x0f172a }
+    };
+
+    const slugcat = {
+      x: -360,
+      y: -130,
+      vx: 0,
+      vy: 0,
+      radius: 17,
+      grounded: false,
+      inWater: false,
+      swimPhase: 0,
+      facing: 1,
+      inPipe: false,
+      pipeTimer: 0,
+      targetPipe: null,
+      pipeCooldown: 0,     // Evita bucles repetitivos de tuberías
+      jumpCooldown: 0,     // Evita saltar sin parar en tierra
+      hunger: 4,
+      state: 'WANDER',     // WANDER, SEEK_FOOD, FLEE, USE_PIPE, EAT, SWIM
+      stateTimer: 0,
+      stuckTimer: 0,
+      eatingTimer: 0,
+      targetFood: null,
+      stepPhase: 0,
+      nodes: []
+    };
+
+    for (let i = 0; i < SC_CONFIG.numNodes; i++) {
+      slugcat.nodes.push({
+        x: slugcat.x - i * 10,
+        y: slugcat.y,
+        vx: 0,
+        vy: 0,
+        radius: SC_CONFIG.radii[i],
+        angle: 0
+      });
+    }
+
+    const scGroup = new THREE.Group();
+    creaturesGroup.add(scGroup);
+
+    const scBodyMat = new THREE.MeshBasicMaterial({ color: SC_CONFIG.colors.body, side: THREE.DoubleSide });
+
+    const scPositions = new Float32Array(SC_CONFIG.numNodes * 2 * 3);
+    const scIndices = [];
+    for (let i = 0; i < SC_CONFIG.numNodes - 1; i++) {
+      const tL = i * 2, tR = i * 2 + 1, bL = (i + 1) * 2, bR = (i + 1) * 2 + 1;
+      scIndices.push(tL, bL, tR, tR, bL, bR);
+    }
+    const scBodyGeo = new THREE.BufferGeometry();
+    scBodyGeo.setAttribute('position', new THREE.BufferAttribute(scPositions, 3));
+    scBodyGeo.setIndex(scIndices);
+    const scBodyMesh = new THREE.Mesh(scBodyGeo, scBodyMat);
+    scGroup.add(scBodyMesh);
+
+    const scDisks = [];
+    for (let i = 0; i < SC_CONFIG.numNodes; i++) {
+      const disk = new THREE.Mesh(new THREE.CircleGeometry(SC_CONFIG.radii[i], 20), scBodyMat);
+      scGroup.add(disk);
+      scDisks.push(disk);
+    }
+
+    const scHeadGroup = new THREE.Group();
+    scHeadGroup.position.z = 2;
+    scGroup.add(scHeadGroup);
+
+    const scHeadCircle = new THREE.Mesh(new THREE.CircleGeometry(SC_CONFIG.radii[0], 28), scBodyMat);
+    scHeadGroup.add(scHeadCircle);
+
+    function createSlugcatEar(isLeft) {
+      const shape = new THREE.Shape();
+      const s = isLeft ? -1 : 1;
+      shape.moveTo(s * 5, 8);
+      shape.bezierCurveTo(s * 15, 12, s * 21, 20, s * 17, 30);
+      shape.quadraticCurveTo(s * 14, 34, s * 10, 31);
+      shape.bezierCurveTo(s * 7, 26, s * 4, 18, s * 2, 12);
+      shape.closePath();
+      return new THREE.ShapeGeometry(shape, 24);
+    }
+    const scEarL = new THREE.Mesh(createSlugcatEar(true), scBodyMat);
+    const scEarR = new THREE.Mesh(createSlugcatEar(false), scBodyMat);
+    scHeadGroup.add(scEarL);
+    scHeadGroup.add(scEarR);
+
+    const scEyeMat = new THREE.MeshBasicMaterial({ color: SC_CONFIG.colors.eye });
+    const scEyeL = new THREE.Mesh(new THREE.CircleGeometry(3.2, 16), scEyeMat);
+    const scEyeR = new THREE.Mesh(new THREE.CircleGeometry(3.2, 16), scEyeMat);
+    scEyeL.position.set(-6.5, 4, 0.2);
+    scEyeR.position.set(6.5, 4, 0.2);
+    scHeadGroup.add(scEyeL);
+    scHeadGroup.add(scEyeR);
+
+    const scPawL = new THREE.Mesh(new THREE.CircleGeometry(5.2, 14), scBodyMat);
+    const scPawR = new THREE.Mesh(new THREE.CircleGeometry(5.2, 14), scBodyMat);
+    scGroup.add(scPawL);
+    scGroup.add(scPawR);
+
+    const scLimbLGeo = new THREE.BufferGeometry();
+    scLimbLGeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(18), 3));
+    const scLimbL = new THREE.Mesh(scLimbLGeo, scBodyMat);
+    scGroup.add(scLimbL);
+
+    const scLimbRGeo = new THREE.BufferGeometry();
+    scLimbRGeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(18), 3));
+    const scLimbR = new THREE.Mesh(scLimbRGeo, scBodyMat);
+    scGroup.add(scLimbR);
+
+    // --- 7. CRIATURA 2: LAGARTO VERDE ---
+    const LZ_CONFIG = {
+      numNodes: 14,
+      radii: [25, 23, 26, 28, 27, 25, 22, 19, 16, 13, 10, 7.5, 5.0, 2.8],
+      lengths: [0, 16, 17, 18, 17, 16, 15, 14, 13, 12, 11, 10, 9, 8],
+      colors: { body: 0x22c55e, backPlate: 0x15803d, eye: 0xfacc15 }
+    };
+
+    const lizard = {
+      x: 360,
+      y: -130,
+      vx: 0,
+      vy: 0,
+      radius: 22,
+      grounded: false,
+      inWater: false,
+      swimPhase: 0,
+      facing: -1,
+      inPipe: false,
+      pipeTimer: 0,
+      targetPipe: null,
+      pipeCooldown: 0,
+      jumpCooldown: 0,     // Controla el salto rítmico orgánico
+      state: 'PATROL',
+      stateTimer: 0,
+      stuckTimer: 0,
+      lungeCooldown: 0,
+      fatigueTimer: 0,     // Pausa de cansancio tras embestida
+      lostSightTimer: 0,
+      stepPhase: 0,
+      nodes: []
+    };
+
+    for (let i = 0; i < LZ_CONFIG.numNodes; i++) {
+      lizard.nodes.push({
+        x: lizard.x + i * 12,
+        y: lizard.y,
+        vx: 0,
+        vy: 0,
+        radius: LZ_CONFIG.radii[i],
+        angle: Math.PI
+      });
+    }
+
+    const lzGroup = new THREE.Group();
+    creaturesGroup.add(lzGroup);
+
+    const lzBodyMat = new THREE.MeshBasicMaterial({ color: LZ_CONFIG.colors.body, side: THREE.DoubleSide });
+    const lzArmorMat = new THREE.MeshBasicMaterial({ color: LZ_CONFIG.colors.backPlate, side: THREE.DoubleSide });
+
+    const lzPositions = new Float32Array(LZ_CONFIG.numNodes * 2 * 3);
+    const lzIndices = [];
+    for (let i = 0; i < LZ_CONFIG.numNodes - 1; i++) {
+      const tL = i * 2, tR = i * 2 + 1, bL = (i + 1) * 2, bR = (i + 1) * 2 + 1;
+      lzIndices.push(tL, bL, tR, tR, bL, bR);
+    }
+    const lzBodyGeo = new THREE.BufferGeometry();
+    lzBodyGeo.setAttribute('position', new THREE.BufferAttribute(lzPositions, 3));
+    lzBodyGeo.setIndex(lzIndices);
+    const lzBodyMesh = new THREE.Mesh(lzBodyGeo, lzBodyMat);
+    lzGroup.add(lzBodyMesh);
+
+    const lzDisks = [];
+    for (let i = 0; i < LZ_CONFIG.numNodes; i++) {
+      const disk = new THREE.Mesh(new THREE.CircleGeometry(LZ_CONFIG.radii[i], 20), lzBodyMat);
+      lzGroup.add(disk);
+      lzDisks.push(disk);
+    }
+
+    const lzHeadGroup = new THREE.Group();
+    lzHeadGroup.position.z = 2;
+    lzGroup.add(lzHeadGroup);
+
+    const lzHeadShape = new THREE.Shape();
+    lzHeadShape.moveTo(-16, -10);
+    lzHeadShape.lineTo(16, -10);
+    lzHeadShape.lineTo(24, 10);
+    lzHeadShape.lineTo(0, 28);
+    lzHeadShape.lineTo(-24, 10);
+    lzHeadShape.closePath();
+    const lzHeadMesh = new THREE.Mesh(new THREE.ShapeGeometry(lzHeadShape, 16), lzArmorMat);
+    lzHeadGroup.add(lzHeadMesh);
+
+    const lzEyeMat = new THREE.MeshBasicMaterial({ color: LZ_CONFIG.colors.eye });
+    const lzEyePupilMat = new THREE.MeshBasicMaterial({ color: 0x000000 });
+    const lzEyeL = new THREE.Mesh(new THREE.CircleGeometry(4.2, 16), lzEyeMat);
+    const lzEyeR = new THREE.Mesh(new THREE.CircleGeometry(4.2, 16), lzEyeMat);
+    lzEyeL.position.set(-14, 8, 0.2);
+    lzEyeR.position.set(14, 8, 0.2);
+    lzHeadGroup.add(lzEyeL);
+    lzHeadGroup.add(lzEyeR);
+
+    const lzPupilL = new THREE.Mesh(new THREE.PlaneGeometry(1.5, 6), lzEyePupilMat);
+    const lzPupilR = new THREE.Mesh(new THREE.PlaneGeometry(1.5, 6), lzEyePupilMat);
+    lzEyeL.add(lzPupilL);
+    lzEyeR.add(lzPupilR);
+
+    const lzPaws = [];
+    const lzLimbs = [];
+    for (let p = 0; p < 4; p++) {
+      const pawMesh = new THREE.Mesh(new THREE.CircleGeometry(7.0, 14), lzArmorMat);
+      lzGroup.add(pawMesh);
+      lzPaws.push(pawMesh);
+
+      const limbGeo = new THREE.BufferGeometry();
+      limbGeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(18), 3));
+      const limbMesh = new THREE.Mesh(limbGeo, lzBodyMat);
+      lzGroup.add(limbMesh);
+      lzLimbs.push({ geo: limbGeo, mesh: limbMesh });
+    }
+
+    // --- 8. FÍSICAS, COLISIONES CON TILEMAP Y CINEMÁTICA INVERSA ---
+    function resolvePhysics(creature, config) {
+      if (creature.inPipe) return;
+
+      // Detección de entrada/salida de agua
+      if (creature.y < ARENA.waterLevelY) {
+        if (!creature.inWater) {
+          creature.inWater = true;
+          spawnSplash(creature.x, ARENA.waterLevelY, 8);
+        }
+      } else {
+        if (creature.inWater) {
+          creature.inWater = false;
+          spawnSplash(creature.x, ARENA.waterLevelY, 6);
+        }
+      }
+
+      // Fuerzas dinámicas
+      if (creature.inWater) {
+        const depth = ARENA.waterLevelY - creature.y;
+        const buoyancy = Math.min(depth * 0.045, 0.44);
+        creature.vy += buoyancy;
+        creature.vx *= 0.88;
+        creature.vy *= 0.86;
+        creature.swimPhase += 0.22;
+      } else {
+        creature.vy -= 0.36; // Gravedad suave de Rain World
+        creature.vx *= 0.84; // Tracción / Fricción
+      }
+
+      const r = creature.radius;
+
+      // SALIDA DEL AGUA Y ESCALADA DE REBORDES (Water Clambering & Hoist)
+      // Resuelve el problema de quedar atrapado en el agua
+      if (creature.inWater || creature.y < ARENA.waterLevelY + 15) {
+        const checkDir = creature.vx !== 0 ? Math.sign(creature.vx) : creature.facing;
+        const frontWallX = creature.x + checkDir * (r + 8);
+        // Si hay una orilla o bloque enfrente a la altura del agua, pero arriba está despejado:
+        const wallAhead = isPointSolid(frontWallX, creature.y) || isPointSolid(frontWallX, creature.y - 8);
+        const clearAbove = !isPointSolid(frontWallX, creature.y + 24) && !isPointSolid(frontWallX + checkDir * 16, creature.y + 24);
+
+        if (wallAhead && clearAbove) {
+          // Salida potente del agua hacia la plataforma seca
+          creature.vy = 7.6;
+          creature.vx = checkDir * 4.4;
+          creature.inWater = false;
+          creature.y += 12;
+          creature.x += checkDir * 8;
+          spawnSplash(creature.x, ARENA.waterLevelY, 6);
+        }
+      }
+
+      let nextX = creature.x + creature.vx;
+      let nextY = creature.y + creature.vy;
+
+      // Colisión horizontal con tolerancia de escalón (Step-up de 5px)
+      if (creature.vx > 0) {
+        const hitsBody = isPointSolid(nextX + r, creature.y + 4) || isPointSolid(nextX + r, creature.y + r * 0.45);
+        if (hitsBody) {
+          const { col } = worldToTile(nextX + r, creature.y + 4);
+          const tileLeftX = col * ARENA.tileSize - ARENA.width / 2;
+          nextX = Math.min(nextX, tileLeftX - r - 0.2);
+          creature.vx = 0;
+        } else if (isPointSolid(nextX + r, creature.y - r * 0.35)) {
+          if (creature.grounded && !isPointSolid(nextX + r, creature.y + 12)) {
+            nextY += 5; // Trepar escalón bajo suavemente
+          } else if (!creature.inWater) {
+            creature.vx = 0;
+          }
+        }
+      } else if (creature.vx < 0) {
+        const hitsBody = isPointSolid(nextX - r, creature.y + 4) || isPointSolid(nextX - r, creature.y + r * 0.45);
+        if (hitsBody) {
+          const { col } = worldToTile(nextX - r, creature.y + 4);
+          const tileRightX = (col + 1) * ARENA.tileSize - ARENA.width / 2;
+          nextX = Math.max(nextX, tileRightX + r + 0.2);
+          creature.vx = 0;
+        } else if (isPointSolid(nextX - r, creature.y - r * 0.35)) {
+          if (creature.grounded && !isPointSolid(nextX - r, creature.y + 12)) {
+            nextY += 5;
+          } else if (!creature.inWater) {
+            creature.vx = 0;
+          }
+        }
+      }
+
+      // Colisión vertical y aterrizaje
+      creature.grounded = false;
+      if (creature.vy < 0) {
+        if (
+          isPointSolid(nextX - r * 0.5, nextY - r) ||
+          isPointSolid(nextX + r * 0.5, nextY - r) ||
+          isPointSolid(nextX, nextY - r)
+        ) {
+          const { row } = worldToTile(nextX, nextY - r);
+          const tileTopY = (row + 1) * ARENA.tileSize - ARENA.height / 2;
+          nextY = tileTopY + r;
+          creature.vy = 0;
+          creature.grounded = true;
+        }
+      } else if (creature.vy > 0) {
+        if (
+          isPointSolid(nextX - r * 0.5, nextY + r) ||
+          isPointSolid(nextX + r * 0.5, nextY + r) ||
+          isPointSolid(nextX, nextY + r)
+        ) {
+          const { row } = worldToTile(nextX, nextY + r);
+          const tileBottomY = row * ARENA.tileSize - ARENA.height / 2;
+          nextY = tileBottomY - r - 0.2;
+          creature.vy = 0;
+        }
+      }
+
+      creature.x = nextX;
+      creature.y = nextY;
+
+      creature.nodes[0].x = creature.x;
+      creature.nodes[0].y = creature.y;
+      creature.nodes[0].vx = creature.vx;
+      creature.nodes[0].vy = creature.vy;
+
+      if (Math.hypot(creature.vx, creature.vy) > 0.12) {
+        creature.nodes[0].angle = Math.atan2(creature.vy, creature.vx);
+        if (Math.abs(creature.vx) > 0.15) {
+          creature.facing = creature.vx > 0 ? 1 : -1;
+        }
+      }
+
+      // Cinemática inversa de cadena de nodos
+      for (let i = 1; i < config.numNodes; i++) {
+        const parent = creature.nodes[i - 1];
+        const child = creature.nodes[i];
+        const targetLen = config.lengths[i];
+
+        if (creature.inWater) {
+          const wave = Math.sin(creature.swimPhase - i * 0.45) * 2.8;
+          child.x += Math.cos(parent.angle + Math.PI / 2) * wave;
+          child.y += Math.sin(parent.angle + Math.PI / 2) * wave;
+        }
+
+        const dx = child.x - parent.x;
+        const dy = child.y - parent.y;
+        const dist = Math.hypot(dx, dy) || 1;
+        const ratio = targetLen / dist;
+
+        child.x = parent.x + dx * ratio;
+        child.y = parent.y + dy * ratio;
+        child.angle = Math.atan2(parent.y - child.y, parent.x - child.x);
+      }
+    }
+
+    function updateCreatureMesh(creature, config, bodyGeo, disks) {
+      if (creature.inPipe) {
+        bodyGeo.attributes.position.array.fill(0);
+        bodyGeo.attributes.position.needsUpdate = true;
+        disks.forEach(d => d.visible = false);
+        return;
+      }
+      disks.forEach(d => d.visible = true);
+
+      const posArr = bodyGeo.attributes.position.array;
+      for (let i = 0; i < config.numNodes; i++) {
+        const node = creature.nodes[i];
+        const r = node.radius;
+
+        let tangentX, tangentY;
+        if (i === 0) {
+          tangentX = creature.nodes[0].x - creature.nodes[1].x;
+          tangentY = creature.nodes[0].y - creature.nodes[1].y;
+        } else if (i === config.numNodes - 1) {
+          tangentX = creature.nodes[i - 1].x - creature.nodes[i].x;
+          tangentY = creature.nodes[i - 1].y - creature.nodes[i].y;
+        } else {
+          tangentX = creature.nodes[i - 1].x - creature.nodes[i + 1].x;
+          tangentY = creature.nodes[i - 1].y - creature.nodes[i + 1].y;
+        }
+
+        const tLen = Math.hypot(tangentX, tangentY) || 1;
+        const normX = -tangentY / tLen;
+        const normY = tangentX / tLen;
+
+        const idx = i * 6;
+        posArr[idx] = node.x + normX * r;
+        posArr[idx + 1] = node.y + normY * r;
+        posArr[idx + 2] = 0;
+        posArr[idx + 3] = node.x - normX * r;
+        posArr[idx + 4] = node.y - normY * r;
+        posArr[idx + 5] = 0;
+
+        disks[i].position.set(node.x, node.y, 0.5);
+      }
+      bodyGeo.attributes.position.needsUpdate = true;
+    }
+
+    function updateLimbGeo(limbGeo, originX, originY, pawX, pawY, originR, pawR) {
+      const dx = pawX - originX;
+      const dy = pawY - originY;
+      const d = Math.hypot(dx, dy) || 1;
+      const nx = -dy / d;
+      const ny = dx / d;
+
+      const arr = limbGeo.attributes.position.array;
+      arr[0] = originX + nx * originR * 0.5; arr[1] = originY + ny * originR * 0.5; arr[2] = 0;
+      arr[3] = pawX + nx * pawR * 0.8;       arr[4] = pawY + ny * pawR * 0.8;       arr[5] = 0;
+      arr[6] = originX - nx * originR * 0.5; arr[7] = originY - ny * originR * 0.5; arr[8] = 0;
+
+      arr[9] = originX - nx * originR * 0.5; arr[10] = originY - ny * originR * 0.5; arr[11] = 0;
+      arr[12] = pawX + nx * pawR * 0.8;      arr[13] = pawY + ny * pawR * 0.8;      arr[14] = 0;
+      arr[15] = pawX - nx * pawR * 0.8;      arr[16] = pawY - ny * pawR * 0.8;      arr[17] = 0;
+
+      limbGeo.attributes.position.needsUpdate = true;
+    }
+
+    function getGroundYBelow(x, startY, maxDist = 38) {
+      for (let d = 0; d <= maxDist; d += 3) {
+        if (isPointSolid(x, startY - d)) {
+          return startY - d + 4;
+        }
+      }
+      return startY - 14;
+    }
+
+    // --- 9. INTELIGENCIA ARTIFICIAL ORGÁNICA DES-AUTOMATIZADA ---
+
+    // A. IA ORGÁNICA DEL SLUGCAT
+    function updateSlugcatAI(delta) {
+      // Temporizadores de enfriamiento
+      slugcat.jumpCooldown = Math.max(0, slugcat.jumpCooldown - delta);
+      slugcat.pipeCooldown = Math.max(0, slugcat.pipeCooldown - delta);
+
+      if (slugcat.inPipe) {
+        slugcat.pipeTimer -= delta;
+        if (slugcat.pipeTimer <= 0) {
+          const destPipe = PIPES.find(p => p.id === slugcat.targetPipe);
+          if (destPipe) {
+            slugcat.x = destPipe.x;
+            slugcat.y = destPipe.y;
+            slugcat.vx = destPipe.outDir.x * 6.0;
+            slugcat.vy = destPipe.outDir.y * 5.0;
+            spawnSplash(destPipe.x, destPipe.y, 8);
+          }
+          slugcat.inPipe = false;
+          slugcat.pipeCooldown = 12.0 + Math.random() * 6.0; // Enfriamiento de 12 a 18s
+          slugcat.state = 'WANDER';
+          scGroup.visible = true;
+        }
+        return;
+      }
+
+      // Detector de atascamiento
+      if (Math.abs(slugcat.vx) < 0.12 && slugcat.grounded) {
+        slugcat.stuckTimer += delta;
+      } else {
+        slugcat.stuckTimer = Math.max(0, slugcat.stuckTimer - delta * 0.5);
+      }
+
+      if (slugcat.stuckTimer > 0.45 && slugcat.jumpCooldown <= 0) {
+        slugcat.vy = 7.5;
+        slugcat.vx = slugcat.facing * 3.8;
+        slugcat.jumpCooldown = 0.65;
+        slugcat.stuckTimer = 0;
+      }
+
+      const distToLizard = Math.hypot(lizard.x - slugcat.x, lizard.y - slugcat.y);
+      const isLizardDangerous = distToLizard < 240 && !lizard.inPipe;
+
+      // Buscar comida activa más cercana
+      let nearestFood = null;
+      let minFoodDist = Infinity;
+      FRUITS.filter(f => f.active).forEach(f => {
+        const d = Math.hypot(f.x - slugcat.x, f.y - slugcat.y);
+        if (d < minFoodDist) { minFoodDist = d; nearestFood = f; }
+      });
+      BATFLIES.filter(b => b.active).forEach(b => {
+        const d = Math.hypot(b.x - slugcat.x, b.y - slugcat.y);
+        if (d < minFoodDist) { minFoodDist = d; nearestFood = b; }
+      });
+
+      // Tubería más cercana
+      let nearestPipe = null;
+      let minPipeDist = Infinity;
+      PIPES.forEach(p => {
+        const d = Math.hypot(p.x - slugcat.x, p.y - slugcat.y);
+        if (d < minPipeDist) { minPipeDist = d; nearestPipe = p; }
+      });
+
+      if (slugcat.eatingTimer > 0) {
+        slugcat.eatingTimer -= delta;
+        slugcat.state = 'EAT';
+        slugcat.vx *= 0.5;
+        return;
+      }
+
+      // ESTADO 1: PELIGRO INMINENTE (FLEE ORGÁNICO)
+      if (isLizardDangerous) {
+        slugcat.state = 'FLEE';
+        const fleeDir = Math.sign(slugcat.x - lizard.x) || (slugcat.x > 0 ? 1 : -1);
+        slugcat.facing = fleeDir;
+
+        // Desplazamiento ágil en tierra
+        slugcat.vx += fleeDir * 0.48;
+
+        const wallAhead = isPointSolid(slugcat.x + fleeDir * 20, slugcat.y + 4) && isPointSolid(slugcat.x + fleeDir * 20, slugcat.y + 14);
+        const gapAhead = slugcat.grounded && !isPointSolid(slugcat.x + fleeDir * 24, slugcat.y - 25);
+        const isCornered = isPointSolid(slugcat.x + fleeDir * 18, slugcat.y);
+
+        // Uso de tubería SOLO si está acorralado y el enfriamiento terminó
+        if (slugcat.pipeCooldown <= 0 && minPipeDist < 70 && (isCornered || Math.random() < 0.05)) {
+          slugcat.state = 'USE_PIPE';
+          const pDir = Math.sign(nearestPipe.x - slugcat.x) || 1;
+          slugcat.facing = pDir;
+          slugcat.vx += pDir * 0.5;
+          if (minPipeDist < 20) {
+            slugcat.inPipe = true;
+            slugcat.pipeTimer = 1.3;
+            slugcat.targetPipe = nearestPipe.partnerId;
+            scGroup.visible = false;
+            return;
+          }
+        }
+
+        // Parkour evasivo: saltos con enfriamiento deliberado (no saltar sin parar)
+        if (slugcat.grounded && slugcat.jumpCooldown <= 0) {
+          // Si el lagarto está muy cerca (< 75px), salto evasivo acrobático
+          if (distToLizard < 75) {
+            slugcat.vy = 7.8;
+            slugcat.vx = fleeDir * 5.2;
+            slugcat.jumpCooldown = 0.55;
+          } else if (wallAhead || (gapAhead && Math.abs(slugcat.vx) > 0.8)) {
+            slugcat.vy = 7.4;
+            slugcat.vx = fleeDir * 4.2;
+            slugcat.jumpCooldown = 0.6;
+          }
+        }
+      }
+      // ESTADO 2: BÚSQUEDA DE COMIDA (SEEK_FOOD)
+      else if (slugcat.hunger < 7 && nearestFood && minFoodDist < 460) {
+        slugcat.state = 'SEEK_FOOD';
+        slugcat.targetFood = nearestFood;
+        const foodDir = Math.sign(nearestFood.x - slugcat.x) || 1;
+        slugcat.facing = foodDir;
+
+        // Corre sobre el suelo suavemente
+        slugcat.vx += foodDir * 0.40;
+
+        const wallAhead = isPointSolid(slugcat.x + foodDir * 20, slugcat.y + 4) && isPointSolid(slugcat.x + foodDir * 20, slugcat.y + 14);
+        const gapAhead = slugcat.grounded && !isPointSolid(slugcat.x + foodDir * 22, slugcat.y - 25);
+        // Salto vertical SOLO cuando está al pie del saliente donde está la comida
+        const closeUnderFood = Math.abs(nearestFood.x - slugcat.x) < 45 && nearestFood.y > slugcat.y + 25;
+
+        if (slugcat.grounded && slugcat.jumpCooldown <= 0) {
+          if (wallAhead || (gapAhead && Math.abs(slugcat.vx) > 0.8) || closeUnderFood) {
+            slugcat.vy = 7.4;
+            slugcat.vx = foodDir * 3.8;
+            slugcat.jumpCooldown = 0.65; // Pausa entre saltos
+          }
+        }
+
+        // Consumo de comida
+        if (minFoodDist < 26) {
+          nearestFood.active = false;
+          nearestFood.group.visible = false;
+          slugcat.hunger = Math.min(7, slugcat.hunger + 1);
+          slugcat.eatingTimer = 0.85;
+          slugcat.state = 'EAT';
+          spawnSplash(nearestFood.x, nearestFood.y, 8);
+        }
+      }
+      // ESTADO 3: EXPLORACIÓN ORGÁNICA (WANDER)
+      else {
+        slugcat.state = slugcat.inWater ? 'SWIM' : 'WANDER';
+        slugcat.stateTimer -= delta;
+
+        if (slugcat.stateTimer <= 0) {
+          slugcat.stateTimer = Math.random() * 3.5 + 1.5;
+          if (slugcat.x > 450) slugcat.facing = -1;
+          else if (slugcat.x < -450) slugcat.facing = 1;
+          else slugcat.facing = Math.random() < 0.5 ? 1 : -1;
+        }
+
+        slugcat.vx += slugcat.facing * 0.28;
+
+        const wallAhead = isPointSolid(slugcat.x + slugcat.facing * 18, slugcat.y + 4) && isPointSolid(slugcat.x + slugcat.facing * 18, slugcat.y + 14);
+        const gapAhead = slugcat.grounded && !isPointSolid(slugcat.x + slugcat.facing * 22, slugcat.y - 25);
+
+        if (slugcat.grounded && slugcat.jumpCooldown <= 0) {
+          if (wallAhead || (gapAhead && Math.abs(slugcat.vx) > 0.6 && Math.random() < 0.75)) {
+            slugcat.vy = 6.8;
+            slugcat.vx = slugcat.facing * 3.4;
+            slugcat.jumpCooldown = 0.8;
+          }
+        }
+
+        // Curiosidad pacífica ocasional por tuberías si está justo encima
+        if (slugcat.pipeCooldown <= 0 && minPipeDist < 16 && Math.random() < 0.02) {
+          slugcat.inPipe = true;
+          slugcat.pipeTimer = 1.3;
+          slugcat.targetPipe = nearestPipe.partnerId;
+          scGroup.visible = false;
+          return;
+        }
+      }
+
+      // Modo Nado
+      if (slugcat.inWater) {
+        slugcat.state = 'SWIM';
+        const targetDir = (nearestFood && Math.abs(nearestFood.y - slugcat.y) < 60) ?
+          Math.sign(nearestFood.x - slugcat.x) : (slugcat.x < 0 ? -1 : 1);
+        slugcat.facing = targetDir;
+        slugcat.vx += targetDir * 0.38;
+
+        if (slugcat.y < ARENA.waterLevelY - 8) {
+          slugcat.vy += 0.44;
+        }
+      }
+    }
+
+    // B. IA ORGÁNICA DEL LAGARTO VERDE
+    function updateLizardAI(delta) {
+      lizard.jumpCooldown = Math.max(0, lizard.jumpCooldown - delta);
+      lizard.pipeCooldown = Math.max(0, lizard.pipeCooldown - delta);
+      lizard.lungeCooldown -= delta;
+      lizard.fatigueTimer = Math.max(0, lizard.fatigueTimer - delta);
+
+      if (lizard.inPipe) {
+        lizard.pipeTimer -= delta;
+        if (lizard.pipeTimer <= 0) {
+          const destPipe = PIPES.find(p => p.id === lizard.targetPipe);
+          if (destPipe) {
+            lizard.x = destPipe.x;
+            lizard.y = destPipe.y;
+            lizard.vx = destPipe.outDir.x * 5.5;
+            lizard.vy = destPipe.outDir.y * 4.5;
+            spawnSplash(destPipe.x, destPipe.y, 8);
+          }
+          lizard.inPipe = false;
+          lizard.pipeCooldown = 14.0;
+          lizard.state = 'PATROL';
+          lzGroup.visible = true;
+        }
+        return;
+      }
+
+      // Detector de atascamiento
+      if (Math.abs(lizard.vx) < 0.12 && lizard.grounded) {
+        lizard.stuckTimer += delta;
+      } else {
+        lizard.stuckTimer = Math.max(0, lizard.stuckTimer - delta * 0.5);
+      }
+
+      if (lizard.stuckTimer > 0.45 && lizard.jumpCooldown <= 0) {
+        lizard.vy = 7.0;
+        lizard.vx = lizard.facing * 3.8;
+        lizard.jumpCooldown = 0.75;
+        lizard.stuckTimer = 0;
+      }
+
+      const distToSlugcat = Math.hypot(slugcat.x - lizard.x, slugcat.y - lizard.y);
+
+      // Si está en pausa de fatiga tras una embestida
+      if (lizard.fatigueTimer > 0) {
+        lizard.state = 'FATIGA';
+        lizard.vx *= 0.75;
+        return;
+      }
+
+      // MODO 1: CAZA / EMBESTIDA (Con aleatoriedad y pérdida de vista)
+      const canSeeSlugcat = !slugcat.inPipe && distToSlugcat < 360 && Math.abs(slugcat.y - lizard.y) < 160;
+
+      if (canSeeSlugcat) {
+        lizard.lostSightTimer = 2.0;
+        const huntDir = Math.sign(slugcat.x - lizard.x) || 1;
+        lizard.facing = huntDir;
+
+        // LUNGE / Embestida
+        if (distToSlugcat < 72 && lizard.lungeCooldown <= 0 && lizard.grounded) {
+          lizard.state = 'LUNGE!';
+          lizard.vx = huntDir * 8.2;
+          lizard.vy = 4.0;
+          lizard.lungeCooldown = 2.5;
+          lizard.fatigueTimer = 1.2; // Pausa de cansancio realista
+          spawnSplash(lizard.x, lizard.y, 6);
+        } else {
+          lizard.state = lizard.inWater ? 'SWIM' : 'STALK';
+          lizard.vx += huntDir * (lizard.inWater ? 0.36 : 0.42);
+
+          const wallAhead = isPointSolid(lizard.x + huntDir * 24, lizard.y + 4) && isPointSolid(lizard.x + huntDir * 24, lizard.y + 14);
+          const gapAhead = lizard.grounded && !isPointSolid(lizard.x + huntDir * 26, lizard.y - 25);
+          const closeUnderTarget = Math.abs(slugcat.x - lizard.x) < 50 && slugcat.y > lizard.y + 25;
+
+          if (lizard.grounded && lizard.jumpCooldown <= 0) {
+            if (wallAhead || (gapAhead && Math.abs(lizard.vx) > 0.8) || closeUnderTarget) {
+              lizard.vy = 6.8;
+              lizard.vx = huntDir * 3.6;
+              lizard.jumpCooldown = 0.7; // Pausa deliberada
+            }
+          }
+        }
+      }
+      // MODO 2: PATRULLA ORGANICA ALEATORIA
+      else {
+        lizard.state = lizard.inWater ? 'SWIM' : 'PATROL';
+        lizard.stateTimer -= delta;
+
+        if (lizard.stateTimer <= 0) {
+          lizard.stateTimer = Math.random() * 4.5 + 2.0;
+          if (lizard.x > 450) lizard.facing = -1;
+          else if (lizard.x < -450) lizard.facing = 1;
+          else lizard.facing = Math.random() < 0.5 ? 1 : -1;
+        }
+
+        lizard.vx += lizard.facing * 0.30;
+
+        const wallAhead = isPointSolid(lizard.x + lizard.facing * 22, lizard.y + 4) && isPointSolid(lizard.x + lizard.facing * 22, lizard.y + 14);
+        const gapAhead = lizard.grounded && !isPointSolid(lizard.x + lizard.facing * 26, lizard.y - 25);
+
+        if (lizard.grounded && lizard.jumpCooldown <= 0) {
+          if (wallAhead || (gapAhead && Math.abs(lizard.vx) > 0.6 && Math.random() < 0.7)) {
+            lizard.vy = 6.4;
+            lizard.vx = lizard.facing * 3.2;
+            lizard.jumpCooldown = 0.85;
+          }
+        }
+      }
+
+      // NADO DEL LAGARTO CON NAVEGACIÓN Y BÚSQUEDA DE TIERRA
+      if (lizard.inWater) {
+        lizard.state = 'SWIM';
+        // En agua busca salir hacia la orilla o hacia donde está su presa
+        const exitDir = (canSeeSlugcat && !slugcat.inWater) ?
+          Math.sign(slugcat.x - lizard.x) : (lizard.x < 0 ? -1 : 1);
+        lizard.facing = exitDir || 1;
+        lizard.vx += lizard.facing * 0.38;
+
+        if (lizard.y < ARENA.waterLevelY - 12) {
+          lizard.vy += 0.42; // Boyancia activa hacia la superficie
+        }
+      }
+    }
+
+    // C. IA Y ALETEO DE LAS MOSCAS (Batflies)
+    function updateBatflies(delta, time) {
+      BATFLIES.forEach((fly, idx) => {
+        if (!fly.active) return;
+
+        fly.wingPhase += delta * 35;
+        const wingAngle = Math.sin(fly.wingPhase) * 0.7;
+        fly.wingL.rotation.z = wingAngle;
+        fly.wingR.rotation.z = -wingAngle;
+
+        const distSC = Math.hypot(slugcat.x - fly.x, slugcat.y - fly.y);
+        const distLZ = Math.hypot(lizard.x - fly.x, lizard.y - fly.y);
+
+        if (distSC < 75) {
+          fly.vx += (fly.x - slugcat.x) * 0.08;
+          fly.vy += (fly.y - slugcat.y) * 0.08;
+        } else if (distLZ < 85) {
+          fly.vx += (fly.x - lizard.x) * 0.08;
+          fly.vy += (fly.y - lizard.y) * 0.08;
+        } else {
+          fly.vx += Math.sin(time * 2.5 + idx) * 0.12;
+          fly.vy += Math.cos(time * 2.0 + idx * 1.5) * 0.12;
+          if (fly.y < ARENA.waterLevelY + 30) fly.vy += 0.25;
+        }
+
+        fly.vx *= 0.94;
+        fly.vy *= 0.94;
+
+        let nx = fly.x + fly.vx;
+        let ny = fly.y + fly.vy;
+        if (isPointSolid(nx, fly.y)) fly.vx = -fly.vx;
+        if (isPointSolid(fly.x, ny)) fly.vy = -fly.vy;
+
+        fly.x += fly.vx;
+        fly.y += fly.vy;
+        fly.group.position.set(fly.x, fly.y, 2);
+      });
+    }
+
+    // --- 10. BUCLE PRINCIPAL DE ANIMACIÓN Y RENDERIZADO ---
+    const clock = new THREE.Clock();
+
+    const scStateEl = document.getElementById('sc-state');
+    const scLocomotionEl = document.getElementById('sc-locomotion');
+    const scPipsEl = document.getElementById('sc-pips');
+    const scPipCountEl = document.getElementById('sc-pip-count');
+    const scPipeCdEl = document.getElementById('sc-pipe-cd');
+    const lzStateEl = document.getElementById('lz-state');
+    const lzDistEl = document.getElementById('lz-dist');
+    const countFliesEl = document.getElementById('count-flies');
+    const countFruitsEl = document.getElementById('count-fruits');
+
+    function updateHUD() {
+      scPipCountEl.textContent = `${slugcat.hunger} / 7`;
+      scPipsEl.innerHTML = '';
+      for (let p = 0; p < 7; p++) {
+        const pip = document.createElement('div');
+        pip.className = `pip ${p < slugcat.hunger ? 'filled' : ''}`;
+        scPipsEl.appendChild(pip);
+      }
+
+      scPipeCdEl.textContent = slugcat.pipeCooldown > 0 ? `${Math.ceil(slugcat.pipeCooldown)}s` : 'Listo';
+      scPipeCdEl.style.color = slugcat.pipeCooldown > 0 ? '#f59e0b' : '#38bdf8';
+
+      scStateEl.textContent = slugcat.state;
+      if (slugcat.state === 'FLEE') {
+        scStateEl.className = 'badge badge-danger';
+      } else if (slugcat.state === 'USE_PIPE') {
+        scStateEl.className = 'badge badge-pipe';
+      } else if (slugcat.state === 'SWIM') {
+        scStateEl.className = 'badge badge-water';
+      } else {
+        scStateEl.className = 'badge badge-slugcat';
+      }
+
+      scLocomotionEl.textContent = slugcat.inWater ? 'Nado Serpentina' : (slugcat.grounded ? 'Tierra (IK 2P)' : 'Salto / Vuelo');
+
+      lzStateEl.textContent = lizard.state;
+      if (lizard.state.includes('LUNGE')) {
+        lzStateEl.className = 'badge badge-danger';
+      } else if (lizard.state === 'FATIGA') {
+        lzStateEl.className = 'badge badge-pipe';
+      } else {
+        lzStateEl.className = 'badge badge-lizard';
+      }
+
+      const dist = Math.hypot(lizard.x - slugcat.x, lizard.y - slugcat.y);
+      lzDistEl.textContent = `${Math.round(dist)} px`;
+
+      countFliesEl.textContent = BATFLIES.filter(b => b.active).length;
+      countFruitsEl.textContent = FRUITS.filter(f => f.active).length;
+    }
+
+    function animate() {
+      requestAnimationFrame(animate);
+
+      const delta = Math.min(clock.getDelta(), 0.08);
+      const time = clock.getElapsedTime();
+
+      if (!isPaused) {
+        updateSlugcatAI(delta);
+        updateLizardAI(delta);
+        updateBatflies(delta, time);
+
+        resolvePhysics(slugcat, SC_CONFIG);
+        resolvePhysics(lizard, LZ_CONFIG);
+
+        if (Math.random() < 0.0012 && slugcat.hunger > 0) {
+          slugcat.hunger--;
+        }
+      }
+
+      // Renderizado Slugcat
+      if (!slugcat.inPipe) {
+        scGroup.visible = true;
+        updateCreatureMesh(slugcat, SC_CONFIG, scBodyGeo, scDisks);
+
+        const scHead = slugcat.nodes[0];
+        scHeadGroup.position.set(scHead.x, scHead.y, 2);
+        scHeadGroup.rotation.z = scHead.angle - Math.PI / 2;
+
+        const speedSC = Math.hypot(slugcat.vx, slugcat.vy);
+        const earFold = Math.min(0.4, speedSC * 0.05);
+        scEarL.rotation.z = -0.2 - earFold;
+        scEarR.rotation.z = 0.2 + earFold;
+
+        slugcat.stepPhase += speedSC * 0.22;
+        const chestNode = slugcat.nodes[2];
+        const stepDist = 8.0;
+
+        const pawLX = chestNode.x - 14 * slugcat.facing + Math.sin(slugcat.stepPhase) * stepDist;
+        const pawRX = chestNode.x + 14 * slugcat.facing + Math.sin(slugcat.stepPhase + Math.PI) * stepDist;
+
+        const groundLY = getGroundYBelow(pawLX, chestNode.y);
+        const groundRY = getGroundYBelow(pawRX, chestNode.y);
+
+        scPawL.position.set(pawLX, groundLY, 1.8);
+        scPawR.position.set(pawRX, groundRY, 1.8);
+
+        updateLimbGeo(scLimbLGeo, chestNode.x - 8, chestNode.y, pawLX, groundLY, 10, 5.2);
+        updateLimbGeo(scLimbRGeo, chestNode.x + 8, chestNode.y, pawRX, groundRY, 10, 5.2);
+      } else {
+        scGroup.visible = false;
+      }
+
+      // Renderizado Lagarto
+      if (!lizard.inPipe) {
+        lzGroup.visible = true;
+        updateCreatureMesh(lizard, LZ_CONFIG, lzBodyGeo, lzDisks);
+
+        const lzHead = lizard.nodes[0];
+        lzHeadGroup.position.set(lzHead.x, lzHead.y, 2);
+        lzHeadGroup.rotation.z = lzHead.angle - Math.PI / 2;
+
+        const speedLZ = Math.hypot(lizard.vx, lizard.vy);
+        lizard.stepPhase += speedLZ * 0.18;
+        const frontSpine = lizard.nodes[2];
+        const rearSpine = lizard.nodes[5];
+
+        const offsets = [
+          { spine: frontSpine, side: -1, phase: 0 },
+          { spine: frontSpine, side: 1,  phase: Math.PI },
+          { spine: rearSpine,  side: -1, phase: Math.PI },
+          { spine: rearSpine,  side: 1,  phase: 0 }
+        ];
+
+        offsets.forEach((leg, i) => {
+          const lX = leg.spine.x + leg.side * 22 * Math.cos(leg.spine.angle + Math.PI / 2) + Math.sin(lizard.stepPhase + leg.phase) * 10;
+          const lY = leg.spine.y + leg.side * 22 * Math.sin(leg.spine.angle + Math.PI / 2);
+          const gY = getGroundYBelow(lX, lY, 32);
+
+          lzPaws[i].position.set(lX, gY, 1.8);
+          updateLimbGeo(lzLimbs[i].geo, leg.spine.x, leg.spine.y, lX, gY, 14, 7.0);
+        });
+      } else {
+        lzGroup.visible = false;
+      }
+
+      // Superficie del Agua
+      const surfArr = waterSurfaceGeo.attributes.position.array;
+      const leftX = -waterWidth / 2;
+      const stepX = waterWidth / (surfaceSegments - 1);
+      for (let s = 0; s < surfaceSegments; s++) {
+        const sx = leftX + s * stepX;
+        const wave = Math.sin(time * 3.5 + s * 0.45) * 2.2 + Math.cos(time * 2.0 + s * 0.2) * 1.0;
+        surfArr[s * 3] = sx;
+        surfArr[s * 3 + 1] = ARENA.waterLevelY + wave;
+        surfArr[s * 3 + 2] = 2;
+      }
+      waterSurfaceGeo.attributes.position.needsUpdate = true;
+
+      splashPool.forEach(sp => {
+        if (sp.life > 0) {
+          sp.life -= delta * 2.2;
+          sp.mesh.position.x += sp.vx;
+          sp.mesh.position.y += sp.vy;
+          sp.vy -= 0.25;
+          sp.mesh.material.opacity = sp.life;
+          if (sp.life <= 0) sp.mesh.visible = false;
+        }
+      });
+
+      PIPES.forEach(p => {
+        p.glowMesh.material.opacity = 0.5 + Math.sin(time * 4.0 + (p.id.charCodeAt(0))) * 0.35;
+      });
+
+      if (followCam && !slugcat.inPipe) {
+        camera.position.x += (slugcat.x - camera.position.x) * 0.08;
+        camera.position.y += (slugcat.y - camera.position.y) * 0.08;
+      } else {
+        camera.position.x += (0 - camera.position.x) * 0.08;
+        camera.position.y += (0 - camera.position.y) * 0.08;
+      }
+
+      updateHUD();
+      renderer.render(scene, camera);
+    }
+
+    animate();
+
+    // --- 11. CONTROLES DEL MODO DIOS / ESPECTADOR ---
+    const btnPause = document.getElementById('btn-pause');
+    btnPause.addEventListener('click', () => {
+      isPaused = !isPaused;
+      btnPause.textContent = isPaused ? '▶ Reanudar' : '⏸ Pausar';
+      btnPause.classList.toggle('active', isPaused);
+    });
+
+    const btnSpawnFood = document.getElementById('btn-spawn-food');
+    btnSpawnFood.addEventListener('click', () => {
+      const rx = (Math.random() - 0.5) * (ARENA.width - 240);
+      const ry = Math.random() * 160 - 60;
+      spawnFruit(rx, ry);
+    });
+
+    const btnSpawnFly = document.getElementById('btn-spawn-fly');
+    btnSpawnFly.addEventListener('click', () => {
+      const rx = (Math.random() - 0.5) * (ARENA.width - 180);
+      const ry = Math.random() * 180 - 20;
+      spawnBatfly(rx, ry);
+    });
+
+    const btnReset = document.getElementById('btn-reset');
+    btnReset.addEventListener('click', () => {
+      slugcat.x = -360;
+      slugcat.y = -130;
+      slugcat.vx = 0;
+      slugcat.vy = 0;
+      slugcat.hunger = 4;
+      slugcat.state = 'WANDER';
+      slugcat.inPipe = false;
+      slugcat.pipeCooldown = 0;
+      slugcat.jumpCooldown = 0;
+      slugcat.stuckTimer = 0;
+
+      lizard.x = 360;
+      lizard.y = -130;
+      lizard.vx = 0;
+      lizard.vy = 0;
+      lizard.state = 'PATROL';
+      lizard.inPipe = false;
+      lizard.pipeCooldown = 0;
+      lizard.jumpCooldown = 0;
+      lizard.stuckTimer = 0;
+      lizard.fatigueTimer = 0;
+
+      scGroup.visible = true;
+      lzGroup.visible = true;
+    });
+
+    const btnCam = document.getElementById('btn-cam');
+    btnCam.addEventListener('click', () => {
+      followCam = !followCam;
+      btnCam.textContent = followCam ? 'Cam: Seguir Slugcat' : 'Cam: Panorama';
+      btnCam.classList.toggle('active', followCam);
+    });
+  </script>
+</body>
+</html>
